@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Global & Layout */
+    body { background-color: #f0f2f5; font-family: 'Kanit', sans-serif; }
+    .card { border-radius: 15px; border: none; }
+    
+    /* Table Styling */
+    .table-container { border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden; background: white; }
+    .thead-dark { background-color: #343a40; color: white; text-align: center; }
+    .check-mark { font-weight: bold; color: #2ecc71; font-size: 1.2rem; }
+    
+    /* UI Components */
+    .loader-box { display: none; text-align: center; padding: 20px; }
+    .btn-search { transition: 0.2s; }
+    .btn-search:hover { opacity: 0.9; transform: translateY(-1px); }
+  </style>
+</head>
+
+<body class="p-3">
+  <div class="container" style="max-width: 600px;">
+    <div class="card p-4 shadow-sm mb-4">
+      <h4 class="text-center mb-4">📅 เช็คตารางงานส่วนตัว</h4>
+
+      <div class="mb-3">
+        <label class="form-label fw-bold">เลือกชื่อของคุณ</label>
+        <select id="nameSelect" class="form-select">
+          <option value="" disabled selected>กำลังโหลดรายชื่อ...</option>
+        </select>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-6">
+          <label class="form-label fw-bold">ปี</label>
+          <select id="yearSelect" class="form-select">
+            <option value="2026" selected>2026</option>
+            <option value="2025">2025</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-bold">เดือน</label>
+          <select id="monthSelect" class="form-select"></select>
+        </div>
+      </div>
+
+      <button onclick="searchSchedule()" class="btn btn-primary w-100 fw-bold py-2 btn-search">🔍 ค้นหาคิวงาน</button>
+    </div>
+
+    <div id="loaderBox" class="loader-box">
+      <div class="spinner-border text-primary"></div>
+      <p class="mt-2 text-muted">กำลังดึงข้อมูลจากระบบ...</p>
+    </div>
+
+    <div id="resultDisplay"></div>
+  </div>
+
+  <script>
+    /** * ⚙️ UI CONFIGURATION
+     * รวมค่าคงที่ที่ใช้ในหน้านี้ไว้ที่เดียว
+     */
+    const UI_CONFIG = {
+      DEFAULT_MONTH: new Date().getMonth() + 1,
+      LABEL_NO_JOBS: "ไม่พบคิวงานในเดือนนี้ครับ 🏝️",
+      LABEL_SELECT_NAME: "-- กรุณาเลือกชื่อ --",
+      MSG_ERROR: "เกิดข้อผิดพลาด: "
+    };
+
+    const getEl = (id) => document.getElementById(id);
+
+    window.onload = () => {
+      initMonthDropdown();
+      fetchMusicianList();
+    };
+
+    // --- Initialization Functions ---
+
+    function initMonthDropdown() {
+      const select = getEl('monthSelect');
+      let html = '';
+      for (let i = 1; i <= 12; i++) {
+        const isCurrent = (i === UI_CONFIG.DEFAULT_MONTH) ? 'selected' : '';
+        html += `<option value="${i}" ${isCurrent}>${i}</option>`;
+      }
+      select.innerHTML = html;
+    }
+
+    function fetchMusicianList() {
+      google.script.run.withSuccessHandler((names) => {
+        const select = getEl('nameSelect');
+        let html = `<option value="" disabled selected>${UI_CONFIG.LABEL_SELECT_NAME}</option>`;
+        html += names.filter(n => n).map(n => `<option value="${n}">${n}</option>`).join('');
+        select.innerHTML = html;
+      }).getMusicianList();
+    }
+
+    // --- Search Logic ---
+
+    function searchSchedule() {
+      const name = getEl('nameSelect').value;
+      const year = getEl('yearSelect').value;
+      const month = getEl('monthSelect').value;
+      
+      if (!name) return alert("กรุณาเลือกชื่อก่อนนะครับ");
+
+      toggleLoader(true);
+      getEl('resultDisplay').innerHTML = '';
+
+      google.script.run
+        .withFailureHandler(handleError)
+        .withSuccessHandler((jobs) => {
+          toggleLoader(false);
+          renderResults(jobs);
+        })
+        .getPersonalSchedule(name, year, month);
+    }
+
+    // --- UI Helper Functions ---
+
+    function toggleLoader(show) {
+      getEl('loaderBox').style.display = show ? 'block' : 'none';
+    }
+
+    function handleError(err) {
+      toggleLoader(false);
+      alert(UI_CONFIG.MSG_ERROR + err.message);
+    }
+
+    function renderResults(jobs) {
+      const display = getEl('resultDisplay');
+      
+      if (!jobs || jobs.length === 0) {
+        display.innerHTML = `<div class="alert alert-light text-center border shadow-sm">${UI_CONFIG.LABEL_NO_JOBS}</div>`;
+        return;
+      }
+
+      let tableHtml = `
+        <div class="table-container shadow-sm">
+          <table class="table table-bordered table-sm mb-0 text-center">
+            <thead class="thead-dark">
+              <tr>
+                <th>วันที่</th>
+                <th>วัน</th>
+                <th>21.30 - 23.30</th>
+                <th>00.30 - 02.00</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${jobs.map(job => `
+                <tr style="background-color: white;">
+                  <td class="fw-bold py-2">${job.day}</td>
+                  <td class="py-2 text-muted">${job.dayOfWeek}</td>
+                  <td class="py-2 check-mark">${job.shift1 || ""}</td>
+                  <td class="py-2 check-mark">${job.shift2 || ""}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      
+      display.innerHTML = tableHtml;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary-color: #0d6efd;
+      --leave-color: #dc3545;
+      --work-color: #198754;
+      --bg-gray: #f8f9fa;
+    }
+
+    body { background-color: var(--bg-gray); font-family: 'Kanit', sans-serif; margin-top: -45px; padding-top: 45px; }
+    .container { max-width: 550px; margin-top: 20px; margin-bottom: 50px; }
+    .card { border-radius: 15px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); border: none; }
+    
+    /* Queue Items */
+    .queue-item { 
+      background: white; border-left: 6px solid #ccc; margin-bottom: 12px; 
+      padding: 12px 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .queue-leave { border-left-color: var(--leave-color); }
+    .queue-work { border-left-color: var(--work-color); }
+
+    .btn-add { border-radius: 10px; font-weight: bold; background-color: #343a40; color: white; transition: 0.2s; }
+    .btn-add:hover { background-color: #000; color: white; }
+
+    .instrument-grid { 
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; 
+      padding: 10px; background: #e9ecef; border-radius: 10px; 
+    }
+    .loader { display: none; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card p-4">
+      <h3 class="text-center mb-4">📅 ระบบจัดการคิวงาน</h3>
+
+      <div class="mb-4">
+        <label class="form-label fw-bold">ชื่อนักดนตรี</label>
+        <select id="musicianName" class="form-select" onchange="handleUserChange(this.value)">
+          <option value="" selected disabled>กำลังโหลดรายชื่อ...</option>
+        </select>
+
+        <div id="newUserBox" class="mt-3 p-3 border border-primary rounded-3 bg-light" style="display:none;">
+          <label class="form-label fw-bold text-primary small">กรอกชื่อใหม่และเลือกเครื่องดนตรี</label>
+          <input type="text" id="newName" class="form-control mb-3" placeholder="ชื่อ">
+          <div id="instrumentGrid" class="instrument-grid">
+            </div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="bg-light p-3 rounded-4 mb-4">
+        <h6 class="fw-bold mb-3">➕ เพิ่มการลางานหรือลงงาน</h6>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-bold">ประเภท</label>
+            <select id="mode" class="form-select">
+              <option value="Leave">🔴 แจ้งลางาน</option>
+              <option value="Work">🟢 ลงชื่อมาทำงาน</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold">ช่วงเวลา</label>
+            <select id="shift" class="form-select">
+              <option value="ลาทั้งคืน">ทั้งคืน</option>
+              <option value="ค่ำ">ค่ำ (21:30 - 23:00)</option>
+              <option value="ดึก">ดึก (00:30 - 02:00)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-bold">ปี (ค.ศ.)</label>
+            <select id="selectYear" class="form-select" onchange="updateCalendar()"></select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold">เดือน</label>
+            <select id="selectMonth" class="form-select" onchange="updateCalendar()"></select>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-bold">คลิกเลือกวันที่ (เลือกได้หลายวัน)</label>
+          <input type="text" id="selectedDate" class="form-control" placeholder="เลือกปีและเดือนก่อน..." readonly>
+        </div>
+        <button onclick="addToQueue()" class="btn btn-add w-100 py-2">เพิ่มลงรายการข้างล่าง</button>
+      </div>
+
+      <div class="mb-4">
+        <h6 id="queueHeader" class="fw-bold">📋 รายการที่รอส่ง (0)</h6>
+        <div id="queueList" class="mt-3">
+          <p class="text-muted text-center py-4 border rounded-3 bg-white">ยังไม่มีรายการที่เลือก</p>
+        </div>
+      </div>
+
+      <button id="submitBtn" onclick="sendAllData()" class="btn btn-primary w-100 py-3 fw-bold" style="display:none; border-radius: 12px;">
+        ยืนยันและส่งข้อมูลทั้งหมด
+      </button>
+
+      <div class="loader text-center mt-3" id="loader">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 fw-bold small">กำลังบันทึกข้อมูล...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    /** * ⚙️ UI CONFIGURATION
+     * รวมการตั้งค่าเครื่องดนตรีและเดือนไว้ที่เดียว
+     */
+    const UI_CONFIG = {
+      INSTRUMENTS: [
+        { id: 'v', val: 'Voc', label: 'ร้อง' },
+        { id: 'a', val: 'AcG', label: 'กีต้าร์โปร่ง' },
+        { id: 'e', val: 'ElG', label: 'กีต้าร์ไฟฟ้า' },
+        { id: 'b', val: 'Bass', label: 'เบส' },
+        { id: 'd', val: 'Drum', label: 'กลอง' },
+        { id: 'k', val: 'Keyboard', label: 'คีย์บอร์ด' }
+      ],
+      MONTHS: Array.from({length: 12}, (_, i) => ({ val: i + 1, label: (i + 1).toString().padStart(2, '0') }))
+    };
+
+    let finalQueue = [];
+    let datePicker;
+    const getEl = (id) => document.getElementById(id);
+
+    window.onload = () => {
+      initUI();
+      loadMusicians();
+      initCalendar();
+    };
+
+    // --- Initialization ---
+
+    function initUI() {
+      // สร้าง Instrument Checkboxes
+      getEl('instrumentGrid').innerHTML = UI_CONFIG.INSTRUMENTS.map(ins => `
+        <div class="form-check">
+          <input class="form-check-input skills" type="checkbox" value="${ins.val}" id="${ins.id}">
+          <label class="form-check-label" for="${ins.id}">${ins.label}</label>
+        </div>
+      `).join('');
+
+      // สร้างตัวเลือกปี/เดือน
+      const now = new Date();
+      getEl('selectYear').innerHTML = [now.getFullYear(), now.getFullYear() + 1]
+        .map(y => `<option value="${y}">${y}</option>`).join('');
+      
+      getEl('selectMonth').innerHTML = UI_CONFIG.MONTHS
+        .map(m => `<option value="${m.val}" ${m.val === now.getMonth() + 1 ? 'selected' : ''}>${m.label}</option>`).join('');
+    }
+
+    function initCalendar() {
+      datePicker = flatpickr("#selectedDate", {
+        mode: "multiple", dateFormat: "Y-m-d", locale: { firstDayOfWeek: 1 }, static: true
+      });
+      updateCalendar();
+    }
+
+    function updateCalendar() {
+      const y = getEl('selectYear').value;
+      const m = getEl('selectMonth').value;
+      if (datePicker && y && m) datePicker.jumpToDate(new Date(y, m - 1, 1));
+    }
+
+    // --- Logic Functions ---
+
+    function handleUserChange(val) {
+      getEl('newUserBox').style.display = (val === "NEW") ? "block" : "none";
+    }
+
+    function loadMusicians() {
+      google.script.run.withSuccessHandler((names) => {
+        const select = getEl('musicianName');
+        const current = select.value;
+        let html = '<option value="" selected disabled>-- เลือกชื่อของคุณ --</option>';
+        html += names.map(n => `<option value="${n}">${n}</option>`).join('');
+        html += '<option value="NEW">➕ เพิ่มชื่อใหม่ (ไม่มีชื่อในรายการ)</option>';
+        select.innerHTML = html;
+        if(current) select.value = current;
+      }).getMusicianList();
+    }
+
+    function addToQueue() {
+      const dStr = getEl('selectedDate').value;
+      if (!dStr) return alert("เลือกวันที่ก่อนครับ");
+      
+      const shift = getEl('shift').value;
+      const mode = getEl('mode').value;
+
+      dStr.split(", ").forEach(d => {
+        if(!finalQueue.some(i => i.date === d && i.shift === shift)) {
+          finalQueue.push({ date: d, shift: shift, mode: mode });
+        }
+      });
+
+      datePicker.clear();
+      updateCalendar();
+      renderQueue();
+    }
+
+    function renderQueue() {
+      const list = getEl('queueList');
+      const btn = getEl('submitBtn');
+      getEl('queueHeader').innerText = `📋 รายการที่รอส่ง (${finalQueue.length})`;
+
+      if (finalQueue.length === 0) {
+        list.innerHTML = '<p class="text-muted text-center py-4 border rounded-3 bg-white">ยังไม่มีรายการที่เลือก</p>';
+        btn.style.display = 'none';
+        return;
+      }
+
+      btn.style.display = 'block';
+      list.innerHTML = finalQueue.map((item, index) => {
+        const isLeave = (item.mode === 'Leave');
+        const shiftDisplay = item.shift === "ลาทั้งคืน" ? "ทั้งคืน" : item.shift;
+        return `
+          <div class="queue-item ${isLeave ? 'queue-leave' : 'queue-work'}">
+            <div>
+              <div class="fw-bold">${item.date}</div>
+              <div class="small">
+                <span class="fw-bold ${isLeave ? 'text-danger' : 'text-success'}">
+                  ${isLeave ? '🔴 แจ้งลา' : '🟢 ลงงาน'}
+                </span> 
+                <span class="text-muted">| ${shiftDisplay}</span>
+              </div>
+            </div>
+            <button class="btn btn-sm text-danger border-0" onclick="removeItem(${index})">ลบ</button>
+          </div>`;
+      }).join('');
+    }
+
+    function removeItem(i) { finalQueue.splice(i, 1); renderQueue(); }
+
+    function sendAllData() {
+      let name = getEl('musicianName').value;
+      const newName = getEl('newName').value;
+      let isNew = (name === "NEW");
+      let skills = {};
+
+      if (isNew) {
+        if (!newName) return alert("กรุณากรอกชื่อด้วยครับ");
+        name = newName;
+        document.querySelectorAll('.skills').forEach(s => { skills[s.value] = s.checked ? 1 : ""; });
+      }
+
+      if (!name) return alert("กรุณาเลือกชื่อของคุณก่อนครับ");
+      if (!confirm("ต้องการส่งข้อมูลทั้งหมดใช่หรือไม่?")) return;
+
+      getEl('submitBtn').disabled = true;
+      getEl('loader').style.display = 'block';
+
+      google.script.run
+        .withSuccessHandler((res) => {
+          alert(res);
+          resetForm(isNew);
+        })
+        .saveBulkData({ name, items: finalQueue, isNew, skills });
+    }
+
+    function resetForm(isNew) {
+      finalQueue = [];
+      renderQueue();
+      datePicker.clear();
+      updateCalendar();
+      if (isNew) {
+        loadMusicians();
+        getEl('newUserBox').style.display = "none";
+        getEl('newName').value = "";
+        document.querySelectorAll('.skills').forEach(s => s.checked = false);
+      }
+      getEl('submitBtn').disabled = false;
+      getEl('loader').style.display = 'none';
+    }
+  </script>
+</body>
+</html>

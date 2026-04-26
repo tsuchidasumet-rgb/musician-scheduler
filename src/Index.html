@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
+  <style>
+    body { background-color: #f0f2f5; padding: 15px; font-family: 'Sarabun', sans-serif; color: #333; }
+    .app-card, .table-container { 
+      background: white; border-radius: 15px; padding: 20px; 
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); margin-bottom: 20px; 
+    }
+    .btn-main { width: 100%; padding: 12px; font-size: 1.1rem; border-radius: 10px; font-weight: 600; }
+    .table-container { overflow-x: auto; padding: 15px; }
+    .table thead { background-color: #0d6efd; color: white; text-align: center; vertical-align: middle; }
+    .table td { text-align: center; vertical-align: middle; color: #000 !important; font-weight: 500; }
+    .editable-cell { cursor: pointer; min-width: 100px; background-color: #fff9db; }
+    .editable-cell:focus { background-color: #fff; outline: 2px solid #0d6efd; }
+    .sunday-row, .sunday-row td { background-color: #ffcccc !important; font-weight: 600; }
+    .sunday-row td.bg-light { background-color: #ffb3b3 !important; }
+    .pdf-header { display: none; text-align: center; margin-bottom: 20px; }
+    .table-bordered > :not(caption) > * > * { border: 1px solid #444 !important; }
+    .loading-overlay { display: none; text-align: center; padding: 20px; }
+  </style>
+</head>
+
+<body>
+  <div class="container-fluid">
+    <div class="app-card text-center no-print">
+      <h3 class="mb-1">ระบบจัดคิวนักดนตรี 🎸</h3>
+      <p class="text-muted small">จัดการตารางงานนักดนตรี</p>
+      <hr>
+      <div class="row g-2 align-items-end text-start">
+        <div class="col-6">
+          <label class="small fw-bold">ปี (Year)</label>
+          <input type="number" id="yearInput" class="form-control" value="2026">
+        </div>
+        <div class="col-6">
+          <label class="small fw-bold">เดือน (Month)</label>
+          <select id="monthSelect" class="form-select">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5" selected>5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+            <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+          </select>
+        </div>
+      </div>
+      <button id="mainBtn" class="btn btn-primary btn-main mt-3" onclick="startProcess()">🚀 เริ่มจัดตารางอัตโนมัติ</button>
+    </div>
+
+    <div id="exportArea" class="table-container">
+      <div class="pdf-header" id="pdfHeader">
+        <h2 style="color: #0d6efd;">ตารางงานนักดนตรี</h2>
+        <p id="pdfSubHeader"></p>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+        <h5 class="mb-0">📅 ตาราง <span id="currentMonthTitle"></span></h5>
+        <div>
+          <button class="btn btn-sm btn-outline-secondary me-1" onclick="loadSchedule()">🔄 รีเฟรช</button>
+          <button class="btn btn-sm btn-success" onclick="exportToPDF()">📥 ดาวน์โหลดตาราง</button>
+        </div>
+      </div>
+
+      <div id="loading" class="loading-overlay no-print">
+        <div class="spinner-border text-primary"></div>
+      </div>
+
+      <table class="table table-hover table-bordered small text-nowrap" id="scheduleTable">
+        <thead>
+          <tr>
+            <th style="width: 50px;">วันที่</th>
+            <th style="width: 50px;">วัน</th>
+            <th>21.30-23.30</th>
+            <th>23.30-00.30</th>
+            <th>00.30-02.00</th>
+            <th>02.00-05.00</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const UI_CONFIG = {
+      EXPORT_WIDTH: 900,
+      EXPORT_SCALE: 3,
+      DEFAULT_DJ_TEXT: "DJ",
+      SUNDAY_LABEL: "อา."
+    };
+
+    window.onload = loadSchedule;
+
+    const toggleLoading = (show) => document.getElementById('loading').style.display = show ? 'block' : 'none';
+    const getEl = (id) => document.getElementById(id);
+
+    function loadSchedule() {
+      toggleLoading(true);
+      getEl('scheduleBody').innerHTML = '';
+      const month = getEl('monthSelect').value;
+      getEl('currentMonthTitle').innerText = `${month}月`;
+
+      google.script.run
+        .withSuccessHandler((data) => {
+          toggleLoading(false);
+          renderTable(data);
+        })
+        .withFailureHandler((err) => {
+          toggleLoading(false);
+          alert("เกิดข้อผิดพลาด: " + err.message);
+        })
+        .getScheduleData();
+    }
+
+    function renderTable(data) {
+      if (!data || data.length === 0) {
+        getEl('scheduleBody').innerHTML = '<tr><td colspan="6">ไม่พบข้อมูล</td></tr>';
+        return;
+      }
+
+      let html = data.map((item, index) => {
+        const isSunday = (item.day?.toString().trim() === UI_CONFIG.SUNDAY_LABEL) ? 'sunday-row' : '';
+        // ตรวจสอบชื่อ Property ให้ตรงกับที่ส่งมาจาก .gs
+        const slot1 = item.slot1 || "";
+        const dj1 = item.dj1 || UI_CONFIG.DEFAULT_DJ_TEXT;
+        const slot2 = item.slot2 || "";
+        const dj2 = item.dj2 || UI_CONFIG.DEFAULT_DJ_TEXT;
+        
+        return `
+          <tr class="${isSunday}">
+            <td class="fw-bold bg-light">${item.date}</td>
+            <td class="fw-bold bg-light">${item.day}</td>
+            <td class="editable-cell" contenteditable="true" onblur="saveData(${index}, 3, this.innerText)">${slot1}</td>
+            <td class="editable-cell" contenteditable="true" onblur="saveData(${index}, 4, this.innerText)">${dj1}</td>
+            <td class="editable-cell" contenteditable="true" onblur="saveData(${index}, 5, this.innerText)">${slot2}</td>
+            <td class="editable-cell" contenteditable="true" onblur="saveData(${index}, 6, this.innerText)">${dj2}</td>
+          </tr>`;
+      }).join('');
+      
+      getEl('scheduleBody').innerHTML = html;
+    }
+
+    function exportToPDF() {
+      const element = getEl('exportArea');
+      const year = getEl('yearInput').value;
+      const month = getEl('monthSelect').value;
+      
+      getEl('pdfHeader').style.display = 'block';
+      getEl('pdfSubHeader').innerText = `${year}年 ${month}月`;
+
+      html2canvas(element, {
+        scale: UI_CONFIG.EXPORT_SCALE,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        width: UI_CONFIG.EXPORT_WIDTH,
+        windowWidth: UI_CONFIG.EXPORT_WIDTH,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('exportArea');
+          el.style.width = `${UI_CONFIG.EXPORT_WIDTH}px`;
+          el.style.padding = '10px';
+          clonedDoc.getElementById('scheduleTable').style.width = '100%';
+        }
+      }).then(canvas => {
+        const imgData = canvas.toDataURL('image/png');
+        handleDownload(imgData, year, month);
+        getEl('pdfHeader').style.display = 'none';
+      });
+    }
+
+    function handleDownload(imgData, year, month) {
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `Music_Schedule_${year}_${month}.png`;
+      link.click();
+
+      const newWindow = window.open("");
+      if (newWindow) {
+        newWindow.document.write(`
+          <html>
+            <head><title>เซฟรูปตารางงาน</title></head>
+            <body style="margin:0; text-align:center; background:#333; font-family:sans-serif;">
+              <div style="background:#0d6efd; color:white; padding:15px;">
+                <b>สร้างรูปเสร็จแล้ว!</b><br>
+                <span style="font-size:13px;">กดค้างที่รูปด้านล่างเพื่อ "บันทึกภาพ"</span>
+              </div>
+              <img src="${imgData}" style="width:100%; display:block;">
+            </body>
+          </html>
+        `);
+      }
+    }
+
+    function startProcess() {
+      const btn = getEl('mainBtn');
+      const month = getEl('monthSelect').value;
+      const year = getEl('yearInput').value;
+      
+      btn.disabled = true;
+      btn.innerHTML = 'ประมวลผล...';
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          btn.disabled = false;
+          btn.innerHTML = '🚀 เริ่มจัดตารางอัตโนมัติ';
+          loadSchedule();
+        })
+        .runAutoSchedule(year, month);
+    }
+
+    function saveData(rowIndex, colIndex, newValue) {
+      google.script.run.updateCell(rowIndex, colIndex, newValue);
+    }
+  </script>
+</body>
+</html>
